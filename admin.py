@@ -2,8 +2,12 @@ from django.contrib import admin
 from .models import *
 
 # Register your models here.
-admin.site.register(Room)
-admin.site.register(Booking)
-admin.site.register(Dependees)
-admin.site.register(RoomServices)
-admin.site.register(Refund)
+
+
+admin.site.register(Announcement)
+admin.site.register(Event)
+admin.site.register(EventAttendees)
+admin.site.register(Bills)
+admin.site.register(FoodMenu)
+admin.site.register(Report)
+admin.site.register(Storage)

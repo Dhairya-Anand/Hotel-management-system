@@ -2,22 +2,37 @@ from django.forms import ModelForm
 from django.contrib.auth.forms import UserCreationForm
 from django import forms
 from django.contrib.auth.models import User
+
 from .models import *
 
 
-class editRoom(ModelForm):
+class editFoodMenu(ModelForm):
     class Meta:
-        model = Room
-        fields = ["capacity", "numberOfBeds", "roomType", "price"]
+        model = FoodMenu
+        fields = ["menuItems", "startDate", "endDate"]
 
 
-class editBooking(ModelForm):
+class editEvent(ModelForm):
     class Meta:
-        model = Booking
-        fields = ["startDate", "endDate"]
+        model = Event
+        fields = ["eventType", "location",
+                  "startDate", "endDate", "explanation"]
 
 
-class editDependees(ModelForm):
+class createEventForm(ModelForm):
     class Meta:
-        model = Dependees
-        fields = ["booking", "name"]
+        model = Event
+        fields = ["eventType", "location",
+                  "startDate", "endDate", "explanation"]
+
+
+class createAnnouncementForm(ModelForm):
+    class Meta:
+        model = Announcement
+        fields = '__all__'
+
+
+class createItem(ModelForm):
+    class Meta:
+        model = Storage
+        fields = ["itemName", "itemType", "quantitiy"]
