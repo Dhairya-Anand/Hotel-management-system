@@ -1,475 +1,465 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth.forms import UserCreationForm
-
+from django.http import HttpResponse
+from django.forms import inlineformset_factory
 from django.db.models import Q, Count
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.decorators import login_required
-from django.core.mail import send_mail
-from django.conf import settings
-from django.contrib import messages
 from django.contrib.auth.models import Group, User
 
+from django.contrib import messages
+from hotel.models import Guest
 from datetime import datetime, date, timedelta
 import random
-# Create your views here.
+
+# Own imports
 from accounts.models import *
 from room.models import *
 from hotel.models import *
 from .forms import *
+# Create your views here.
 
 
-@login_required(login_url='login')
-def home(request):
-    role = str(request.user.groups.all()[0])
-    if role != "guest":
-        return redirect("employee-profile", pk=request.user.id)
+def register_page(request):
+    form = CreateUserForm()
+    if request.user.is_authenticated:
+        return redirect('home')
     else:
-        return redirect("guest-profile", pk=request.user.id)
+        if request.method == 'POST':
+            form = CreateUserForm(request.POST)
+            if form.is_valid():
+                if (len(User.objects.filter(email=request.POST.get("email"))) != 0):
+                    messages.error(
+                        request, 'Email address is alredy taken')
+                    return redirect('login')
+
+                user = form.save()
+                username = form.cleaned_data.get('username')
+
+                group = Group.objects.get(name="guest")
+                user.groups.add(group)
+
+                curGuest = Guest(
+                    user=user, phoneNumber=request.POST.get("phoneNumber"))
+                curGuest.save()
+
+                messages.success(
+                    request, 'Guest Account Was Created Succesfuly For ' + username)
+
+                return redirect('login')
+
+        context = {'form': form}
+        return render(request, 'accounts/register.html', context)
 
 
 @login_required(login_url='login')
-def events(request):
+def add_employee(request):
     role = str(request.user.groups.all()[0])
     path = role + "/"
 
-    events = Event.objects.all()
+    form = CreateUserForm()
+    form2 = ROLES()
+    form3 = CreateEmployeeForm()
 
-    # eventAttendees = EventAttendees.objects.filter(guest = request.user.guest, event = )
+    if request.method == 'POST':
+        post = request.POST.copy()  # to make it mutable
+        post['phoneNumber'] = "+90" + post['phoneNumber']
+        request.POST = post
 
-    attendedEvents = None
-    if role == 'guest':
-        attendedEvents = EventAttendees.objects.filter(
-            guest=request.user.guest)
+        form = CreateUserForm(request.POST)
+        form2 = ROLES(request.POST)
+        form3 = CreateEmployeeForm(request.POST)
 
-    if request.method == "POST":
-        if "filter" in request.POST:
-            if (request.POST.get("type") != ""):
-                events = events.filter(
-                    eventType__contains=request.POST.get("type"))
+        if form.is_valid() and form2.is_valid() and form3.is_valid():
+            user = form.save()
+            employee = form3.save()
+            employee.user = user
+            employee.save()
 
-            if (request.POST.get("name") != ""):
-                events = events.filter(
-                    location__contains=request.POST.get("location"))
+            username = form.cleaned_data.get('username')
 
-            if (request.POST.get("fd") != ""):
-                events = events.filter(
-                    startDate__gte=request.POST.get("fd"))
+            role = form2.cleaned_data.get("ROLES_TYPES")
 
-            if (request.POST.get("ed") != ""):
-                events = events.filter(
-                    endDate__lte=request.POST.get("ed"))
+            group = Group.objects.get(name=role)
+            user.groups.add(group)
 
-            context = {
-                "role": role,
-                "events": events,
-                "type": request.POST.get("type"),
-                "location": request.POST.get("location"),
-                "fd": request.POST.get("fd"),
-                "ed": request.POST.get("ed")
-            }
-            return render(request, path + "events.html", context)
+            messages.success(
+                request, role + ' Account Was Created Succesfuly For ' + username)
 
-        if 'Save' in request.POST:
-            n = request.POST.get('id-text')
-            temp = EventAttendees.objects.get(id=request.POST.get('id-2'))
-            temp.numberOfDependees = n
-            temp.save()
-
-        if 'attend' in request.POST:  # attend button clicked
-            attendedEvents = EventAttendees.objects.filter(
-                guest=request.user.guest)
-            tempEvent = events.get(id=request.POST.get('id'))
-            # print("query set**",attendedEvents)
-            # print("**object***",tempEvent)
-            # print(tempEvent in attendedEvents)
-            check = False
-            for t in attendedEvents:
-                if t.event.id == tempEvent.id:
-                    check = True
-                    break
-            if not check:  # event not in the query set
-                a = EventAttendees(event=tempEvent, guest=request.user.guest)
-                a.save()
-                return redirect('events')  # refresh page
-
-        elif 'remove' in request.POST:  # remove button clicked
-            tempEvent = events.get(id=request.POST.get('id'))
-            EventAttendees.objects.filter(
-                event=tempEvent, guest=request.user.guest).delete()
-            return redirect('events')  # refresh page
-
-    context = {
-        "role": role,
-        'events': events,
-        'attendedEvents': attendedEvents,
-        "type": request.POST.get("type"),
-        "location": request.POST.get("location"),
-        "fd": request.POST.get("fd"),
-        "ed": request.POST.get("ed")
-    }
-    return render(request, path + "events.html", context)
-
-
-@login_required(login_url='login')
-def createEvent(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    form = createEventForm()
-    if request.method == "POST":
-        form = createEventForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect('events')
+            return redirect('employees')
 
     context = {
         'form': form,
+        'form2': form2,
+        'form3': form3,
         "role": role
     }
-    return render(request, path + "createEvent.html", context)
+    return render(request, path + "add-employee.html", context)
 
 
-@login_required(login_url='login')
-def deleteEvent(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
+def login_page(request):
+    if request.user.is_authenticated:
+        return redirect('home')
+    else:
+        if request.method == "POST":
+            username = request.POST.get('username')
+            password = request.POST.get('password')
 
-    event = Event.objects.get(id=pk)
-    if request.method == "POST":
-        event.delete()
-        return redirect('events')
+            user = authenticate(request, username=username, password=password)
 
-    context = {
-        "role": role,
-        'event': event
-
-    }
-    return render(request, path + "deleteEvent.html", context)
-
-
-@ login_required(login_url='login')
-def event_profile(request, id):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    tempEvent = Event.objects.get(id=id)
-    attendees = EventAttendees.objects.filter(event=tempEvent)
-
-    context = {
-        "role": role,
-        "attendees": attendees,
-        "event": tempEvent
-    }
-    return render(request, path + "event-profile.html", context)
-
-
-@ login_required(login_url='login')
-def event_edit(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    event = Event.objects.get(id=pk)
-    form1 = editEvent(instance=event)
-
-    context = {
-        "role": role,
-        "event": event,
-        "form": form1,
-    }
-
-    if request.method == "POST":
-        form1 = editEvent(request.POST, instance=event)
-        if form1.is_valid:
-            form1.save()
-            return redirect("events")
-
-    return render(request, path + "event-edit.html", context)
-
-
-@ login_required(login_url='login')
-def announcements(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    announcements = Announcement.objects.all()
-    context = {
-        "role": role,
-        'announcements': announcements
-    }
-
-    if request.method == "POST":
-        if 'sendAnnouncement' in request.POST:  # send button clicked
-            sender = request.user.employee
-
-            announcement = Announcement(
-                sender=sender, content=request.POST.get('textid'))
-
-            announcement.save()
-            return redirect('announcements')
-
-        if "filter" in request.POST:
-            if (request.POST.get("id") != ""):
-                announcements = announcements.filter(
-                    id__contains=request.POST.get("id"))
-
-            if (request.POST.get("content") != ""):
-                announcements = announcements.filter(
-                    content__contains=request.POST.get("content"))
-
-            if (request.POST.get("name") != ""):
-                users = User.objects.filter(
-                    Q(first_name__contains=request.POST.get("name")) | Q(last_name__contains=request.POST.get("name")))
-                employees = Employee.objects.filter(user__in=users)
-                announcements = announcements.filter(sender__in=employees)
-
-            if (request.POST.get("date") != ""):
-                announcements = announcements.filter(
-                    date=request.POST.get("date"))
-
-        context = {
-            "role": role,
-            'announcements': announcements,
-            "id": request.POST.get("id"),
-            "name": request.POST.get("name"),
-            "content": request.POST.get("content"),
-            "date": request.POST.get("date")
-        }
-        return render(request, path + "announcements.html", context)
-
-    return render(request, path + "announcements.html", context)
-
-
-@login_required(login_url='login')
-def deleteAnnouncement(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    announcement = Announcement.objects.get(id=pk)
-    if request.method == "POST":
-        announcement.delete()
-        return redirect('announcements')
-
-    context = {
-        "role": role,
-        'announcement': announcement
-
-    }
-    return render(request, path + "deleteAnnouncement.html", context)
-
-
-@ login_required(login_url='login')
-def storage(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    storage = Storage.objects.all()
-    context = {
-        "role": role,
-        'storage': storage
-    }
-    if request.method == "POST":
-        if 'add' in request.POST:
-            item = Storage(itemName=request.POST.get("itemName"), itemType=request.POST.get(
-                "itemType"), quantitiy=request.POST.get("quantitiy"))
-            item.save()
-            storage = Storage.objects.all()
-
-        elif 'save' in request.POST:
-            id = request.POST.get("id")
-            storages = Storage.objects.get(id=id)
-            storages.quantitiy = request.POST.get("quantitiy")
-            storages.save()
-
-        if "filter" in request.POST:
-            if (request.POST.get("id") != ""):
-                storage = storage.filter(
-                    id__contains=request.POST.get("id"))
-
-            if (request.POST.get("name") != ""):
-                storage = storage.filter(
-                    itemName__contains=request.POST.get("name"))
-
-            if (request.POST.get("type") != ""):
-                storage = storage.filter(
-                    itemType__contains=request.POST.get("type"))
-
-        context = {
-            "role": role,
-            "storage": storage,
-            "id": request.POST.get("id"),
-            "name": request.POST.get("name"),
-            "type": request.POST.get("type"),
-            "q": request.POST.get("q"),
-
-        }
-        return render(request, path + "storage.html", context)
-
-    return render(request, path + "storage.html", context)
-
-
-@login_required(login_url='login')
-def deleteStorage(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    storage = Storage.objects.get(id=pk)
-    if request.method == "POST":
-        storage.delete()
-        return redirect('storage')
-
-    context = {
-        "role": role,
-        'storage': storage
-
-    }
-    return render(request, path + "deleteStorage.html", context)
-
-
-@login_required(login_url='login')
-def food_menu(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-    print(request.POST)
-    if request.method == "POST":
-        if 'add' in request.POST:
-            foodmenu = FoodMenu(menuItems=request.POST.get("menuItems"), startDate=request.POST.get(
-                "startDate"), endDate=request.POST.get("endDate"))
-            foodmenu.save()
-
-    food_menu = FoodMenu.objects.all()
-    context = {
-        "role": role,
-        'food_menu': food_menu
-    }
-    return render(request, path + "food-menu.html", context)
-
-
-@login_required(login_url='login')
-def deleteFoodMenu(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    food_menu = FoodMenu.objects.get(pk=pk)
-    if request.method == "POST":
-        food_menu.delete()
-        return redirect('food-menu')
-
-    context = {
-        "role": role,
-        'food_menu': food_menu
-
-    }
-    return render(request, path + "deleteFoodMenu.html", context)
-
-
-@login_required(login_url='login')
-def food_menu_edit(request, pk):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-    print(request.POST)
-    food_menu = FoodMenu.objects.get(pk=pk)
-    form1 = editFoodMenu(request.POST, instance=food_menu)
-    if request.method == "POST":
-        if form1.is_valid():
-            form1.save()
-            return redirect("food-menu")
-
-    context = {
-        "role": role,
-        'food_menu': food_menu
-    }
-    return render(request, path + "food-menu-edit.html", context)
-
-
-@ login_required(login_url='login')
-def error(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-
-    context = {
-        "role": role
-    }
-    return render(request, path + "error.html", context)
-
-
-@login_required(login_url='login')
-def payment(request):
-    role = str(request.user.groups.all()[0])
-    path = role
-
-    # create random string:
-    # generating the random code to be sent to the email
-    import random
-    import string
-    code = ''.join(random.choice(string.ascii_uppercase + string.ascii_lowercase)
-                   for _ in range(10))
-
-    context = {
-        "role": role,
-        "code": code
-
-    }
-
-    def send(request, receiver, code):
-        subject = "Payment Verification"
-        text = """ 
-            Dear {guestName},
-            Please Copy Paste This Code in the verification Window:
-
-            {code}
-
-            Please ignore this email, if you didn't initiate this transaction!
-        """
-        # placing the code and user name in the email bogy text
-        email_text = text.format(
-            guestName=receiver.user.first_name + " " + receiver.user.last_name, code=code)
-
-        # seting up the email
-        message_email = 'hms@support.com'
-        message = email_text
-        receiver_name = receiver.user.first_name + " " + receiver.user.last_name
-
-        # send email
-        send_mail(
-            receiver_name + " " + subject,  # subject
-            message,  # message
-            message_email,  # from email
-            [receiver.user.email],  # to email
-            fail_silently=False,  # for user in users :
-            # user.email
-        )
-
-        messages.success(
-            request, 'Verification email Was Successfully Sent')
-
-        # do something ???
-        return render(request, path + "/verify.html", context)
-    if role == "guest":
-        send(request, request.user.guest, code)
-    elif role == "receptionist":
-        send(request, Booking.objects.all().last().guest, code)
-
-    return render(request, path + "/payment.html", context)
-
-
-@login_required(login_url='login')
-def verify(request):
-    role = str(request.user.groups.all()[0])
-    path = role + "/"
-    if request.method == "POST":
-        tempCode = request.POST.get("tempCode")
-        if "verify" in request.POST:
-            realCode = request.POST.get("realCode")
-
-            if realCode == tempCode:
-                messages.success(request, "Successful Booking")
+            if user is not None:
+                login(request, user)
+                return redirect('home')
             else:
-                Booking.objects.all().last().delete()
-                messages.warning(request, "Invalid Code")
+                messages.info(request, "Username or Password is incorrect")
 
-            return redirect("rooms")
+        context = {}
+        return render(request, 'accounts/login.html', context)
+
+
+def logout_user(request):
+    logout(request)
+    return redirect('login')
+
+
+@login_required(login_url='login')
+def guests(request):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    topRange = Booking.objects.all().values("guest").annotate(
+        total=Count("guest")).order_by("-total")
+    topLimit = 10
+    topList = []
+    for t in topRange:
+        if len(topList) > 10:
+            break
+        else:
+            topList.append(Guest.objects.get(id=t.get("guest")))
+
+    bookings = Booking.objects.all()
+    fd = datetime.combine(date.today()-timedelta(days=30), datetime.min.time())
+    ld = datetime.combine(date.today(), datetime.min.time())
+    guests = []
+
+    for b in bookings:
+        if b.endDate >= fd.date() and b.startDate <= ld.date():
+            if b.guest not in guests:
+                guests.append(b.guest)
+
+    if request.method == "POST":
+        if "filterDate" in request.POST:
+
+            if request.POST.get("f_day") == "" and request.POST.get("l_day") == "":
+                guests = Guest.objects.all()
+
+                context = {
+                    "role": role,
+                    "guests": guests,
+                    "fd": "",
+                    "ld": ""
+                }
+                return render(request, path + "guests.html", context)
+
+            if request.POST.get("f_day") == "":
+                fd = datetime.strptime("1970-01-01", '%Y-%m-%d')
+            else:
+                fd = request.POST.get("f_day")
+                fd = datetime.strptime(fd, '%Y-%m-%d')
+
+            if request.POST.get("l_day") == "":
+                ld = datetime.strptime("2030-01-01", '%Y-%m-%d')
+            else:
+                ld = request.POST.get("l_day")
+                ld = datetime.strptime(ld, '%Y-%m-%d')
+
+            for b in bookings:
+                if b.endDate >= fd.date() and b.startDate <= ld.date():
+                    if b.guest not in guests:
+                        guests.append(b.guest)
+
+        if "filterGuest" in request.POST:
+            guests = Guest.objects.all()
+            users = User.objects.all()
+            if (request.POST.get("id") != ""):
+                users = users.filter(
+                    id__contains=request.POST.get("id"))
+                guests = guests.filter(user__in=users)
+
+            if (request.POST.get("name") != ""):
+                users = users.filter(
+                    Q(first_name__contains=request.POST.get("name")) | Q(last_name__contains=request.POST.get("name")))
+                guests = guests.filter(user__in=users)
+
+            if (request.POST.get("email") != ""):
+                users = users.filter(email__contains=request.POST.get("email"))
+                guests = guests.filter(user__in=users)
+
+            if (request.POST.get("number") != ""):
+                guests = guests.filter(
+                    phoneNumber__contains=request.POST.get("number"))
+
+            context = {
+                "role": role,
+                "guests": guests,
+                "id": request.POST.get("id"),
+                "name": request.POST.get("name"),
+                "email": request.POST.get("email"),
+                "number": request.POST.get("number")
+            }
+            return render(request, path + "guests.html", context)
+
+        if "top" in request.POST:
+            topRange = Booking.objects.all().values("guest").annotate(
+                total=Count("guest")).order_by("-total")
+            topList = []
+            topLimit = request.POST.get("top")
+            for t in topRange:
+                if len(topList) >= int(topLimit):
+                    break
+                else:
+                    topList.append(Guest.objects.get(id=t.get("guest")))
+            context = {
+                "role": role,
+                "guests": guests,
+                "topList": topList,
+                "topLimit": topLimit,
+                "fd": fd,
+                "ld": ld
+            }
+            return render(request, path + "guests.html", context)
     context = {
         "role": role,
-        "code": tempCode
+        "guests": guests,
+        "topList": topList,
+        "topLimit": topLimit,
+        "fd": fd,
+        "ld": ld
+    }
+    return render(request, path + "guests.html", context)
+
+
+@login_required(login_url='login')
+def employees(request):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    employees = Employee.objects.all()
+
+    if request.method == "POST":
+        if "filter" in request.POST:
+            users = User.objects.all()
+            if (request.POST.get("id") != ""):
+                users = users.filter(
+                    id__contains=request.POST.get("id"))
+                employees = employees.filter(user__in=users)
+
+            if (request.POST.get("name") != ""):
+                users = users.filter(
+                    Q(first_name__contains=request.POST.get("name")) | Q(last_name__contains=request.POST.get("name")))
+                employees = employees.filter(user__in=users)
+
+            if (request.POST.get("email") != ""):
+                users = users.filter(email__contains=request.POST.get("email"))
+                employees = employees.filter(user__in=users)
+
+            if (request.POST.get("number") != ""):
+                employees = employees.filter(
+                    phoneNumber__contains=request.POST.get("number"))
+
+            if (request.POST.get("filterRole") != ""):
+                try:
+                    group = Group.objects.get(
+                        name__contains=request.POST.get("filterRole"))
+                except:
+                    group = None
+                users = users.filter(groups=group)
+                employees = employees.filter(user__in=users)
+
+        context = {
+            "role": role,
+            "employees": employees,
+            "id": request.POST.get("id"),
+            "name": request.POST.get("name"),
+            "email": request.POST.get("email"),
+            "number": request.POST.get("number"),
+            "filterRole": request.POST.get("filterRole")
+        }
+        return render(request, path + "employees.html", context)
+
+    context = {
+        "role": role,
+        "employees": employees
+    }
+    return render(request, path + "employees.html", context)
+
+
+@login_required(login_url='login')
+def employee_details(request, pk):
+    if request.method == 'POST':
+        user = User.objects.get(id=pk)
+        employee = Employee.objects.get(user=user)
+        user.first_name = request.POST.get("first_name")
+        user.last_name = request.POST.get("last_name")
+        user.email = request.POST.get("email")
+        employee.phoneNumber = request.POST.get("phoneNumber")
+        user.save()
+        employee.save()
+        return redirect("home")
+
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    tempUser = User.objects.get(id=pk)
+    employee = Employee.objects.get(user=tempUser)
+    tasks = Task.objects.filter(employee=employee)
+    context = {
+        "role": role,
+        "employee": employee,
+        "tasks": tasks
+    }
+    return render(request, path + "employee-profile.html", context)
+
+
+@ login_required(login_url='login')
+def employee_details_edit(request, pk):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    tempuser = User.objects.get(id=pk)
+    employee = Employee.objects.get(user=tempuser)
+
+    form1 = editEmployee(instance=employee)
+    form2 = editUser(instance=tempuser)
+
+    context = {
+        "role": role,
+        "employee": employee,
+        "user": tempuser,
+        "form1": form1,
+        "form2": form2
+    }
+
+    if request.method == "POST":
+        form1 = editEmployee(request.POST, instance=employee)
+        form2 = editUser(request.POST, instance=tempuser)
+        if form1.is_valid() and form2.is_valid():
+            form1.save()
+            form2.save()
+
+    return render(request, path + "employee-edit.html", context)
+
+
+@ login_required(login_url='login')
+def guest_edit(request, pk):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+    tempuser = User.objects.get(id=pk)
+    guest = Guest.objects.get(user=tempuser)
+    form1 = editGuest(instance=guest)
+    form2 = editUser(instance=tempuser)
+
+    context = {
+        "role": role,
+        "guest": guest,
+        "form1": form1,
+        "form2": form2,
+        "user": tempuser,
+    }
+
+    if request.method == "POST":
+        form1 = editGuest(request.POST, instance=guest)
+        form2 = editUser(request.POST, instance=tempuser)
+        if form1.is_valid and form2.is_valid:
+            form1.save()
+            form2.save()
+
+    return render(request, path + "guest-edit.html", context)
+
+
+@login_required(login_url='login')
+def guest_profile(request, pk):
+    tempUser = User.objects.get(id=pk)
+    guest = Guest.objects.get(user=tempUser)
+
+    if request.method == 'POST':
+        tempUser.first_name = request.POST.get("first_name")
+        tempUser.last_name = request.POST.get("last_name")
+        guest.phoneNumber = request.POST.get("phoneNumber")
+        tempUser.save()
+        guest.save()
+        return redirect("home")
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    eventAttendees = EventAttendees.objects.filter(guest=guest)
+    bookings = Booking.objects.filter(guest=guest)
+    context = {
+        "role": role,
+        "guest": guest,
+        "eventAttendees": eventAttendees,
+        "bookings": bookings
+    }
+    return render(request, path + "guest-profile.html", context)
+
+
+@login_required(login_url='login')
+def tasks(request):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    tempEmp = Employee.objects.get(user=request.user)
+    tasks = Task.objects.filter(employee=tempEmp)
+
+    context = {
+        "role": role,
+        'tasks': tasks
+    }
+    if request.method == "POST":
+        if "markAsComplete" in request.POST:
+            tid = request.POST.get("tid")
+            Task.objects.get(id=tid).delete()
+            return redirect("tasks")
+
+        if "filter" in request.POST:
+            if(request.POST.get("id") != ""):
+                tasks = tasks.filter(id=request.POST.get("id"))
+
+            if(request.POST.get("desc") != ""):
+                tasks = tasks.filter(
+                    description__contains=request.POST.get("desc"))
+
+            if(request.POST.get("fd") != ""):
+                tasks = tasks.filter(startTime__gte=request.POST.get("fd"))
+
+            if(request.POST.get("ed") != ""):
+                tasks = tasks.filter(endTime__lte=request.POST.get("ed"))
+
+            context = {
+                "role": role,
+                "tasks": tasks,
+                "id": request.POST.get("id"),
+                "desc": request.POST.get("desc"),
+                "fd": request.POST.get("fd"),
+                "ed": request.POST.get("ed")
+            }
+
+    return render(request, path + "tasks.html", context)
+
+
+@login_required(login_url='login')
+def completeTask(request, pk):
+    role = str(request.user.groups.all()[0])
+    path = role + "/"
+
+    task = Task.objects.get(id=pk)
+    if request.method == "POST":
+        task.delete()
+        return redirect("tasks")
+
+    context = {
+        "role": role,
+        'task': task
 
     }
-    return render(request, path + "verify.html", context)
+    return render(request, path + "completeTask.html", context)

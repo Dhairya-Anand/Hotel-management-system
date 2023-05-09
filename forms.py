@@ -1,38 +1,52 @@
 from django.forms import ModelForm
 from django.contrib.auth.forms import UserCreationForm
-from django import forms
 from django.contrib.auth.models import User
+from django import forms
 
 from .models import *
 
 
-class editFoodMenu(ModelForm):
+# class CreateUserForm(UserCreationForm):
+#     class Meta:
+#         model = User
+#         fields = ['username', 'email', 'password1', 'password1']
+
+class CreateUserForm(UserCreationForm):
     class Meta:
-        model = FoodMenu
-        fields = ["menuItems", "startDate", "endDate"]
+        model = User
+        fields = ['username', 'first_name', 'last_name',
+                  'email', 'password1', 'password2']
 
 
-class editEvent(ModelForm):
+class CreateEmployeeForm(ModelForm):
     class Meta:
-        model = Event
-        fields = ["eventType", "location",
-                  "startDate", "endDate", "explanation"]
+        model = Employee
+        fields = ['phoneNumber', 'salary']
 
 
-class createEventForm(ModelForm):
+class editEmployee(ModelForm):
     class Meta:
-        model = Event
-        fields = ["eventType", "location",
-                  "startDate", "endDate", "explanation"]
+        model = Employee
+        fields = ["phoneNumber", "salary"]
 
 
-class createAnnouncementForm(ModelForm):
+class editUser(ModelForm):
     class Meta:
-        model = Announcement
-        fields = '__all__'
+        model = User
+        fields = ["first_name", "last_name", "email"]
 
 
-class createItem(ModelForm):
+class editGuest(ModelForm):
     class Meta:
-        model = Storage
-        fields = ["itemName", "itemType", "quantitiy"]
+        model = Guest
+        fields = ["phoneNumber"]
+
+
+class ROLES(forms.Form):
+    ROLES_TYPES = [
+        ('manager', 'manager'),
+        ('receptionist', 'receptionist'),
+        ('staff', 'staff'),
+    ]
+    ROLES_TYPES = forms.CharField(
+        widget=forms.RadioSelect(choices=ROLES_TYPES))
