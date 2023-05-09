@@ -1,74 +1,87 @@
 from django.db import models
 from django.utils import timezone
+from django.contrib.auth.models import User
 
-from accounts.models import Guest
+from accounts.models import Guest, Employee
+
+
 # Create your models here.
-
-
-class Room(models.Model):
-    ROOM_TYPES = (
-        ('King', 'King'),
-        ('Luxury', 'Luxury'),
-        ('Normal', 'Normal'),
-        ('Economic', 'Economic'),
-
-    )
-    number = models.IntegerField(primary_key=True)
-    capacity = models.SmallIntegerField()
-    numberOfBeds = models.SmallIntegerField()
-    roomType = models.CharField(max_length=20, choices=ROOM_TYPES)
-    price = models.FloatField()
-    statusStartDate = models.DateField(null=True)
-    statusEndDate = models.DateField(null=True)
+class Announcement(models.Model):
+    content = models.TextField()
+    sender = models.ForeignKey(Employee, null=True, on_delete=models.CASCADE)
+    date = models.DateField(default=timezone.now)
 
     def __str__(self):
-        return str(self.number)
+        return str(self.sender)
 
 
-class Booking(models.Model):
-    roomNumber = models.ForeignKey(Room, on_delete=models.CASCADE)
-    guest = models.ForeignKey(Guest, null=True, on_delete=models.CASCADE)
-    dateOfReservation = models.DateField(default=timezone.now)
+class Event(models.Model):
+    EVENT_TYPES = (
+        ('Movie', 'Movie'),
+        ('Theater', 'Theater'),
+        ('Conference', 'Conference'),
+        ('Concert', 'Concert'),
+        ('Entertainment', 'Entertainment'),
+        ('Live Music', 'Live Music'),
+    )
+
+    eventType = models.CharField(max_length=20, choices=EVENT_TYPES)
+    location = models.CharField(max_length=100)
     startDate = models.DateField()
     endDate = models.DateField()
-
-    def numOfDep(self):
-        return Dependees.objects.filter(booking=self).count()
+    explanation = models.TextField()
 
     def __str__(self):
-        return str(self.roomNumber) + " " + str(self.guest)
+        return str(self.eventType)
 
 
-class Dependees(models.Model):
-    booking = models.ForeignKey(Booking,   null=True, on_delete=models.CASCADE)
-    name = models.CharField(max_length=100)
-
-    def str(self):
-        return str(self.booking) + " " + str(self.name)
-
-
-class Refund(models.Model):
+class EventAttendees(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    numberOfDependees = models.IntegerField(default=0)
     guest = models.ForeignKey(Guest,   null=True, on_delete=models.CASCADE)
-    reservation = models.ForeignKey(Booking, on_delete=models.CASCADE)
-    reason = models.TextField()
 
     def __str__(self):
-        return str(self.guest)
+        return str(self.event) + " " + str(self.guest)
 
 
-class RoomServices(models.Model):
-    SERVICES_TYPES = (
-        ('Food', 'Food'),
-        ('Cleaning', 'Cleaning'),
-        ('Technical', 'Technical'),
+class Bills(models.Model):
+    guest = models.ForeignKey(Guest,   null=True, on_delete=models.CASCADE)
+    totalAmount = models.FloatField()
+    summary = models.TextField()
+    date = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return str(self.guest) + " " + str(self.summary) + " " + str(self.totalAmount)
+
+
+class FoodMenu(models.Model):
+    startDate = models.DateField()
+    endDate = models.DateField()
+    menuItems = models.TextField()
+
+    def __str__(self):
+        return str(self.menuItems) + " " + str(self.startDate)
+
+
+class Report(models.Model):
+    date = models.DateField(default=timezone.now)
+    content = models.TextField()
+
+    def __str__(self):
+        return str(self.content) + " " + str(self.date)
+
+
+class Storage(models.Model):
+    ITEM_TYPES = (
+        ('Kitchen', 'kitchen'),
+        ('Cleaning', 'cleaning'),
+        ('Electronic', 'Electronic'),
+        ('Textile ', 'textile '),
+        ('Other', 'other'),
     )
+    itemName = models.CharField(max_length=100)
+    itemType = models.CharField(max_length=20, choices=ITEM_TYPES)
+    quantitiy = models.IntegerField()
 
-    curBooking = models.ForeignKey(
-        Booking,   null=True, on_delete=models.CASCADE)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE)
-    createdDate = models.DateField(default=timezone.now)
-    servicesType = models.CharField(max_length=20, choices=SERVICES_TYPES)
-    price = models.FloatField()
-
-    def str(self):
-        return str(self.curBooking) + " " + str(self.room) + " " + str(self.servicesType)
+    def __str__(self):
+        return str(self.itemName)
